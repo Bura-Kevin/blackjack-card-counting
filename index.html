@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blackjack — SPA avec compteur de cartes</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Conteneur racine — tout le contenu dynamique est injecté par script.js -->
+  <div id="app">
+    <header class="topbar">
+      <h1 class="logo">BLACKJACK<span class="logo-dot">.</span></h1>
+
+      <div class="topbar-right">
+        <div class="stat" title="Solde du joueur">
+          <span class="stat-label">Solde</span>
+          <span class="stat-value" id="balance">100 €</span>
+        </div>
+
+        <button id="camera-btn" class="icon-btn" aria-label="Prendre une photo">📷</button>
+        <button id="theme-toggle" class="icon-btn" aria-label="Changer de thème">
+          <span id="theme-icon">☀</span>
+        </button>
+        <button id="reset-btn" class="icon-btn danger" aria-label="Réinitialiser">↺</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- ============= COMPTEUR DE CARTES (gauche) ============= -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <h2>Compteur</h2>
+          <button id="toggle-counter" class="icon-btn small" title="Cacher / révéler">👁</button>
+        </div>
+
+        <div class="counter-body" id="counter-body">
+          <div class="counter-row big">
+            <span class="counter-label">Compte courant</span>
+            <b class="counter-value" id="running-count">0</b>
+          </div>
+          <div class="counter-row big">
+            <span class="counter-label">Vrai compte</span>
+            <b class="counter-value" id="true-count">0.0</b>
+          </div>
+          <div class="counter-row">
+            <span class="counter-label">Paquets restants</span>
+            <b class="counter-value muted" id="decks-left">6.0</b>
+          </div>
+          <div class="counter-row">
+            <span class="counter-label">Cartes vues</span>
+            <b class="counter-value muted" id="cards-seen">0 / 312</b>
+          </div>
+          <div class="shoe-bar"><div class="shoe-bar-fill" id="shoe-bar-fill"></div></div>
+
+          <details class="counter-hint">
+            <summary>Système Hi-Lo</summary>
+            <ul>
+              <li><span>2 · 3 · 4 · 5 · 6</span><b>+1</b></li>
+              <li><span>7 · 8 · 9</span><b>0</b></li>
+              <li><span>10 · J · Q · K · A</span><b>−1</b></li>
+            </ul>
+            <p class="hint-note">Vrai compte = compte / paquets restants.</p>
+          </details>
+        </div>
+
+        <!-- Mode "auto-test" : compteur masqué, le joueur entre sa propre estimation -->
+        <div class="self-test" id="self-test" hidden>
+          <p class="self-test-label">Tentez d'estimer le compte courant :</p>
+          <div class="self-test-row">
+            <input type="number" id="guess-input" placeholder="?" />
+            <button id="guess-btn" class="btn small">Vérifier</button>
+          </div>
+          <p class="self-test-result" id="guess-result"></p>
+        </div>
+      </aside>
+
+      <!-- ============= TABLE DE JEU ============= -->
+      <main class="table">
+        <!-- Zone du croupier -->
+        <section class="hand-zone dealer-zone">
+          <div class="avatar-row">
+            <div class="avatar dealer-avatar" aria-hidden="true">
+              <!-- Silhouette de croupier en SVG inline -->
+              <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <radialGradient id="dealerGrad" cx="50%" cy="35%" r="65%">
+                    <stop offset="0%" stop-color="#3a3a3a" />
+                    <stop offset="100%" stop-color="#0a0a0a" />
+                  </radialGradient>
+                </defs>
+                <circle cx="32" cy="32" r="32" fill="url(#dealerGrad)" />
+                <!-- tête -->
+                <circle cx="32" cy="24" r="9" fill="#e8d6b6" />
+                <!-- cheveux -->
+                <path d="M22 22 Q32 10 42 22 Q42 16 32 14 Q22 16 22 22 Z" fill="#1a1a1a" />
+                <!-- col + nœud papillon -->
+                <path d="M16 56 Q32 38 48 56 Z" fill="#fafafa" />
+                <path d="M16 56 Q22 44 32 44 Q42 44 48 56 Z" fill="#0c0c0c" />
+                <path d="M28 42 L36 42 L34 46 L36 50 L28 50 L30 46 Z" fill="#d4b06a" />
+                <!-- yeux -->
+                <circle cx="29" cy="24" r="0.8" fill="#1a1a1a" />
+                <circle cx="35" cy="24" r="0.8" fill="#1a1a1a" />
+              </svg>
+            </div>
+            <div class="hand-meta">
+              <span class="hand-name">Croupier</span>
+              <span class="hand-score" id="dealer-score">—</span>
+            </div>
+          </div>
+          <div class="cards" id="dealer-cards"></div>
+        </section>
+
+        <!-- Bandeau central : message + pile de jetons sur la table -->
+        <section class="center-bar">
+          <div class="message" id="message">Placez votre mise pour commencer.</div>
+          <div class="table-bet" id="table-bet" aria-live="polite"></div>
+        </section>
+
+        <!-- Zone du joueur -->
+        <section class="hand-zone player-zone">
+          <div class="cards" id="player-cards"></div>
+          <div class="avatar-row">
+            <div class="avatar player-avatar" id="player-avatar" aria-label="Avatar du joueur">
+              <!-- Silhouette par défaut (ombre) — remplacée par photo si capturée -->
+              <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" id="player-svg">
+                <defs>
+                  <radialGradient id="playerGrad" cx="50%" cy="40%" r="65%">
+                    <stop offset="0%" stop-color="#1a1a1a" />
+                    <stop offset="100%" stop-color="#000000" />
+                  </radialGradient>
+                </defs>
+                <circle cx="32" cy="32" r="32" fill="url(#playerGrad)" />
+                <circle cx="32" cy="24" r="9" fill="#0a0a0a" />
+                <path d="M14 60 Q32 38 50 60 Z" fill="#0a0a0a" />
+              </svg>
+            </div>
+            <div class="hand-meta">
+              <span class="hand-name" id="player-name">Vous</span>
+              <span class="hand-score" id="player-score">—</span>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ============= CONTRÔLES ============= -->
+    <footer class="controls">
+      <form id="bet-form" class="bet-form">
+        <label for="bet-input" class="bet-label">Mise (€)</label>
+        <input
+          type="number"
+          id="bet-input"
+          min="1"
+          step="1"
+          value="10"
+          inputmode="numeric"
+        />
+        <div class="chips" id="chips"></div>
+        <button type="button" class="btn ghost" id="clear-bet">Effacer</button>
+        <button type="submit" class="btn btn-primary" id="deal-btn">Distribuer</button>
+      </form>
+
+      <div class="actions" id="actions" hidden>
+        <button class="btn" data-action="hit">Tirer (H)</button>
+        <button class="btn" data-action="stand">Rester (S)</button>
+        <button class="btn" data-action="double">Doubler (D)</button>
+      </div>
+
+      <div class="stats" id="stats"></div>
+    </footer>
+  </div>
+
+  <!-- ============= MODALE CAMÉRA ============= -->
+  <div class="modal" id="camera-modal" hidden>
+    <div class="modal-content">
+      <h2>Choisir votre avatar</h2>
+      <p class="modal-sub">Activez la caméra pour vous prendre en photo, ou retirez l'avatar.</p>
+      <div class="cam-stage">
+        <video id="cam-video" autoplay playsinline muted></video>
+        <canvas id="cam-canvas" hidden></canvas>
+        <img id="cam-preview" alt="Aperçu" hidden />
+      </div>
+      <div class="modal-actions">
+        <button id="cam-start" class="btn">Activer caméra</button>
+        <button id="cam-shoot" class="btn btn-primary" disabled>📸 Capturer</button>
+        <button id="cam-save" class="btn btn-primary" hidden>Enregistrer</button>
+        <button id="cam-clear" class="btn ghost">Retirer l'avatar</button>
+        <button id="cam-close" class="btn ghost">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js" defer></script>
+</body>
+</html>
